@@ -1,4 +1,10 @@
 #include "systemcalls.h"
+#include <stdlib.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <syslog.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -9,15 +15,8 @@
 */
 bool do_system(const char *cmd)
 {
-
-/*
- * TODO  add your code here
- *  Call the system() function with the command set in the cmd
- *   and return a boolean true if the system() call completed with success
- *   or false() if it returned a failure
-*/
-
-    return true;
+    int status = system(cmd);
+    return WIFEXITED(status) && (WEXITSTATUS(status) == 0);
 }
 
 /**
@@ -36,6 +35,7 @@ bool do_system(const char *cmd)
 
 bool do_exec(int count, ...)
 {
+    openlog(NULL, 0, LOG_USER);
     va_list args;
     va_start(args, count);
     char * command[count+1];
@@ -58,9 +58,24 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
+    int pid = fork();
+    if (pid == -1) {
+        perror("Unable to fork!");
+        return false;
+    } else if (pid) {
+        int status;
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status)) {
+            syslog(LOG_INFO, "Child exited with status: %d", WEXITSTATUS(status));
+            return WEXITSTATUS(status) == 0;
+        }
+    } else {
+        // We need to pass all of command including that path to the binary as argv as it is expected by POSIX that argv[0] is the path to binary...
+        execv(command[0], command);
+        exit(1); // In case execv fails return 1 error code for parent to see that we failed...
+    }
+    
     va_end(args);
-
     return true;
 }
 
@@ -92,6 +107,27 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+
+    int pid = fork();
+    if (pid == -1) {
+        perror("Unable to fork!");
+        return false;
+    } else if (pid) {
+        int status;
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status)) {
+            syslog(LOG_INFO, "Child exited with status: %d", WEXITSTATUS(status));
+            return WEXITSTATUS(status) == 0;
+        }
+    } else {
+        // As per POSIX a newly created FD always gets the lowest (!) possible non-negative number. In this case it will be 1 (stdout) since we closed it.
+        close(STDOUT_FILENO);
+        open(outputfile, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+        
+        // We need to pass all of command including that path to the binary as argv as it is expected by POSIX that argv[0] is the path to binary...
+        execv(command[0], command);
+        exit(1); // In case execv fails return 1 error code for parent to see that we failed...
+    }
 
     va_end(args);
 
