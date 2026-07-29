@@ -1,6 +1,4 @@
 Using built-in specs.
-COLLECT_GCC=aarch64-linux-gnu-gcc
-COLLECT_LTO_WRAPPER=/usr/libexec/gcc/aarch64-linux-gnu/13/lto-wrapper
-OFFLOAD_TARGET_NAMES=nvptx-none
-OFFLOAD_TARGET_DEFAULT=1
-/
+COLLECT_GCC=arm-none-linux-gnueabihf-gcc
+COLLECT_LTO_WRAPPER=/home/parallels/Documents/arm-gnu-toolchain-13.3.rel1-aarch64-arm-none-linux-gnueabihf/bin/../libexec/gcc/arm-none-linux-gnueabihf/13.3.1/lto-wrapper
+/home/parallels/Documents/arm-gnu-toolchain-13.3.rel1-aarch64-arm-none-linux-gnueabihf/bin/../arm-none-linux-gnueabihf/libc
