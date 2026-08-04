@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 if [ ! -d "$1" ] || [ -z "$2" ]; then
     echo "USAGE: finder.sh [filesdir] [searchstring]"
