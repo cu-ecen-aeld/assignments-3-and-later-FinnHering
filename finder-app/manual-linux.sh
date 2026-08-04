@@ -13,6 +13,9 @@ FINDER_APP_DIR=$(realpath $(dirname $0))
 ARCH=arm64
 CROSS_COMPILE=aarch64-none-linux-gnu-
 
+export CROSS_COMPILE
+export ARCH
+
 if [ $# -lt 1 ]
 then
 	echo "Using default directory ${OUTDIR} for output"
@@ -34,8 +37,8 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     echo "Checking out version ${KERNEL_VERSION}"
     git checkout ${KERNEL_VERSION}
 
-    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} defconfig
-    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
+    make defconfig
+    make all
     cp ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ${OUTDIR}
 fi
 
