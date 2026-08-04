@@ -2,6 +2,8 @@
 # Tester script for assignment 1 and assignment 2
 # Author: Siddhant Jajoo
 
+which finder.sh > /tmp/assignment4-result.txt
+
 set -e
 set -u
 
