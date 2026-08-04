@@ -34,8 +34,8 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     echo "Checking out version ${KERNEL_VERSION}"
     git checkout ${KERNEL_VERSION}
 
-    make defconfig
-    make -j10 all
+    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} defconfig
+    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} all
     cp ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ${OUTDIR}
 fi
 
