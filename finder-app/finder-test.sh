@@ -2,7 +2,8 @@
 # Tester script for assignment 1 and assignment 2
 # Author: Siddhant Jajoo
 
-which finder.sh > /tmp/assignment4-result.txt
+which finder.sh > /tmp/assignment4-result.txt || true
+cd `dirname $0`
 
 set -e
 set -u
@@ -10,8 +11,12 @@ set -u
 NUMFILES=10
 WRITESTR=AELD_IS_FUN
 WRITEDIR=/tmp/aeld-data
-username=$(cat /etc/finder-app/conf/username.txt)
-cd $(dirname $0)
+
+if [ -f conf/username.txt ]; then
+	username=$(cat conf/username.txt)
+else
+	username=$(cat /etc/finder-app/conf/username.txt)
+fi
 
 if [ $# -lt 3 ]
 then
@@ -34,8 +39,14 @@ echo "Writing ${NUMFILES} files containing string ${WRITESTR} to ${WRITEDIR}"
 
 rm -rf "${WRITEDIR}"
 
+
+if [ -f conf/assignment.txt ]; then
 # create $WRITEDIR if not assignment1
-assignment=`cat /etc/finder-app/conf/assignment.txt`
+	assignment=`cat conf/assignment.txt`
+else
+	assignment=`cat /etc/finder-app/assignment.txt`
+fi
+
 
 if [ $assignment != 'assignment1' ]
 then
