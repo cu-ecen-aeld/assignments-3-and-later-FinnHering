@@ -14,8 +14,6 @@
 
 #define OUTPUT "/var/tmp/aesdsocketdata"
 
-#define syslog(priority, format, ...) (printf(format "\n", ##__VA_ARGS__), syslog(priority, format, ##__VA_ARGS__))
-
 bool should_close = false;
 void handle_close_signal(int signal) {
     should_close = true;
@@ -27,7 +25,7 @@ int main(size_t argc, char** argv) {
 
     openlog(NULL, 0, LOG_USER);
     setlogmask(LOG_UPTO(LOG_INFO));
-    syslog(LOG_DEBUG, "setting up signal handlers...");
+
     
     struct sigaction sa = {handle_close_signal};
     sigaction(SIGTERM, &sa, NULL);
@@ -43,7 +41,7 @@ int main(size_t argc, char** argv) {
         syslog(LOG_ERR, "Unable to obtain network configuration: %s", gai_strerror(err));
         return -1;
     }
-    syslog(LOG_DEBUG, "Binding...");
+
     if (bind(socketfd, addrinfo->ai_addr, addrinfo->ai_addrlen)) {
         syslog(LOG_ERR, "Bind failed: %s\n", strerror(errno));
         freeaddrinfo(addrinfo);
@@ -66,7 +64,7 @@ int main(size_t argc, char** argv) {
             return 0;
     }
 
-    syslog(LOG_DEBUG, "Listening...");
+
     if (listen(socketfd, 0xfff)) {
         syslog(LOG_ERR, "Listen failed: %s\n", strerror(errno));
     }
@@ -80,7 +78,7 @@ int main(size_t argc, char** argv) {
         return -1;
     }
 
-    syslog(LOG_DEBUG, "Waiting for incoming connections...");
+
     while (!should_close && (confd = accept(socketfd, &peer_addr, &peer_addrlen)) >= 0) {
         char peer_host[NI_MAXHOST] = {0};
         char peer_service[NI_MAXSERV] = {0};
@@ -96,20 +94,17 @@ int main(size_t argc, char** argv) {
         // Recv data until exhausted (connection closed...)
         int recv_status; 
         while ((recv_status = recv(confd, buf, BUFSIZ, 0)) > 0) {
-            syslog(LOG_DEBUG, "Reading %d bytes from Peer %s...", recv_status, peer_host);
             package_content = realloc(package_content, package_len + recv_status);
             package_len += recv_status;
             
             // Read buffer byte-by-byte
             for (int i = 0; i < recv_status; i++) {
                 // Copy the byte no matter what
-                syslog(LOG_DEBUG, "Got byte %x from Peer %s", buf[i], peer_host);
                 package_content[package_offset] = buf[i];
                 package_offset++;
                 
                 // Handle package boundary
                 if (buf[i] == '\n') {
-                    syslog(LOG_DEBUG, "Package boundary recieved! Writing %ld bytes to file", package_offset);
                     // Write a line into the file. Since the package_content already holds the \n we dont need to append one
 
                     if (write(logfilefd, package_content, package_offset) < 0) {
@@ -120,11 +115,10 @@ int main(size_t argc, char** argv) {
                         return -1;
                     }
                     
-                    syslog(LOG_DEBUG, "Sending back file content...");
+
                     char sendbuf[BUFSIZ];
                     size_t data_len;
                     for (int i = 0; data_len = pread(logfilefd, sendbuf, BUFSIZ, i); i += data_len) {
-                        syslog(LOG_DEBUG, "Sending %ld bytes...", data_len);
                         if (send(confd, sendbuf, data_len, 0) < 0) {
                             free(package_content);
                             package_content = NULL;
