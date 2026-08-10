@@ -26,7 +26,7 @@ int main(size_t argc, char** argv) {
     bool deamonize = argc >= 2 && argv[1] == "-d";
 
     openlog(NULL, 0, LOG_USER);
-    setlogmask(LOG_INFO);
+    setlogmask(LOG_UPTO(LOG_INFO));
     syslog(LOG_DEBUG, "setting up signal handlers...");
     
     struct sigaction sa = {handle_close_signal};
