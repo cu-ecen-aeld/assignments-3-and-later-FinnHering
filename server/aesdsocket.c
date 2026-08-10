@@ -11,8 +11,10 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <strings.h>
 
 #define OUTPUT "/var/tmp/aesdsocketdata"
+#define SIGINT_BREAK(res) if(res == SIGINT) break; 
 
 bool should_close = false;
 void handle_close_signal(int signal) {
@@ -21,17 +23,27 @@ void handle_close_signal(int signal) {
 
 
 int main(size_t argc, char** argv) {
-    bool deamonize = argc >= 2 && argv[1] == "-d";
+    bool deamonize = argc >= 2 && !strcmp(argv[1], "-d");
+    
 
     openlog(NULL, 0, LOG_USER);
-    setlogmask(LOG_UPTO(LOG_INFO));
 
-    
     struct sigaction sa = {handle_close_signal};
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
 
+    setlogmask(LOG_UPTO(LOG_INFO));
+
     int socketfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    // QUIRK: Quickly restarting this application causes it to crash because it cannot bind. 
+    // This is because the OS is holding back the Port for some time...
+    // Fix this by setting the socket option for allowing rebinding
+    int reuse = 1; 
+    setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int));
+    setsockopt(socketfd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(int));
+
+
     struct addrinfo hints = {};
     hints.ai_flags = AI_PASSIVE;
     hints.ai_family = AF_INET;
@@ -49,19 +61,23 @@ int main(size_t argc, char** argv) {
     }
     freeaddrinfo(addrinfo);
     addrinfo = NULL;
-
-    switch(fork()) {
-        case -1: 
-            syslog(LOG_ERR, "Cannot fork. %s", strerror(errno));
-            break; 
-        case 0:
-            close(0);
-            close(1);
-            close(2);
-            break;
-        default: 
-            syslog(LOG_INFO, "Daemonized");
-            return 0;
+    if (deamonize) {
+        switch(fork()) {
+            case -1: 
+                syslog(LOG_ERR, "Cannot fork. %s", strerror(errno));
+                break; 
+            case 0:
+                close(0);
+                close(1);
+                close(2);
+                open("/dev/null", O_WRONLY);
+                open("/dev/null", O_WRONLY);
+                open("/dev/null", O_RDONLY);
+                break;
+            default: 
+                syslog(LOG_INFO, "Daemonized");
+                return 0;
+        }
     }
 
 
@@ -70,115 +86,58 @@ int main(size_t argc, char** argv) {
     }
 
     int confd;
-    struct sockaddr peer_addr = {};
-    socklen_t peer_addrlen = 0;
-    int logfilefd = open(OUTPUT, O_RDWR | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-    if (logfilefd < 0) {
+
+    FILE* logfile = fopen(OUTPUT, "w+");
+    if (logfile < 0) {
         syslog(LOG_ERR, "Unable to open file /var/tmp/aesdsocketdata: %s", strerror(errno));
         return -1;
     }
 
+    while(!should_close) {
+        syslog(LOG_DEBUG, "Accepting connections...");
+        struct sockaddr peer_addr = {};
+        socklen_t peer_addrlen = sizeof(peer_addr);
+        confd = accept(socketfd, &peer_addr, &peer_addrlen);
+        if (confd == -1) {
+            if (errno == SIGINT) break;
+            else continue;
+        }
+        FILE* con = fdopen(confd, "r");
 
-    while (!should_close && (confd = accept(socketfd, &peer_addr, &peer_addrlen)) >= 0) {
         char peer_host[NI_MAXHOST] = {0};
         char peer_service[NI_MAXSERV] = {0};
         int err = getnameinfo(&peer_addr, peer_addrlen, peer_host, NI_MAXHOST, peer_service, NI_MAXSERV, NI_NUMERICHOST | NI_NUMERICSERV);
-        
         syslog(LOG_INFO, "Accepted connection from %s\n", peer_host);
-        char buf[BUFSIZ];
+
+        char* package = NULL;
+        size_t package_size = 0;
+        size_t line_len = getline(&package, &package_size, con);
+        syslog(LOG_DEBUG, "Got package: %s", package);
+
+        // Write to file
+        fwrite(package, sizeof(char), line_len, logfile);
+        free(package);
         
-        size_t package_len = 0;
-        char* package_content = NULL;
-        size_t package_offset = 0;
-
-        // Recv data until exhausted (connection closed...)
-        int recv_status; 
-        while ((recv_status = recv(confd, buf, BUFSIZ, 0)) > 0) {
-            package_content = realloc(package_content, package_len + recv_status);
-            package_len += recv_status;
-            
-            // Read buffer byte-by-byte
-            for (int i = 0; i < recv_status; i++) {
-                // Copy the byte no matter what
-                package_content[package_offset] = buf[i];
-                package_offset++;
-                
-                // Handle package boundary
-                if (buf[i] == '\n') {
-                    // Write a line into the file. Since the package_content already holds the \n we dont need to append one
-
-                    if (write(logfilefd, package_content, package_offset) < 0) {
-                        free(package_content);
-                        package_content = NULL;
-                        if (should_close) goto shutdown_gracefully;
-                        syslog(LOG_ERR, "Unable to write file: %s", strerror(errno));
-                        return -1;
-                    }
-                    
-
-                    char sendbuf[BUFSIZ];
-                    size_t data_len;
-                    for (int i = 0; data_len = pread(logfilefd, sendbuf, BUFSIZ, i); i += data_len) {
-                        if (send(confd, sendbuf, data_len, 0) < 0) {
-                            free(package_content);
-                            package_content = NULL;
-                            if (should_close) goto shutdown_gracefully;
-                            syslog(LOG_ERR, "Unable to send data: %s", strerror(errno));
-                            return -1;
-                        }
-                    }
-                    if (data_len < 0) {
-                        free(package_content);
-                        package_content = NULL;
-                        if (should_close) goto shutdown_gracefully;
-                        syslog(LOG_ERR, "Unable to read file: %s", strerror(errno));
-                        return -1;
-                    }
-                    
-
-                    // Realocate the package content to hold the rest of the data...f
-                    size_t new_len = recv_status - (i + 1);
-                    if (new_len > 0) {
-                        package_content = realloc(package_content, new_len);
-                    } else {
-                        free(package_content);
-                        package_content = NULL;
-                    }
-                    package_len = new_len;
-                    package_offset = 0;
-
-                }
-            }
+        // Read from file
+        fseek(logfile, 0, SEEK_SET);
+        char* buf[BUFSIZ] = {0};
+        size_t num_read = 0;
+        while ((num_read = fread(buf, sizeof(char), BUFSIZ, logfile)) > 0) {
+            syslog(LOG_DEBUG, "Writing: %ld bytes to client", num_read);
+            write(confd, buf, num_read * sizeof(char));
         }
-        if (recv_status < 0) {
-            if (errno == EINTR && should_close) {
-                free(package_content);
-                package_content = NULL;
-                package_len = 0;
-                goto shutdown_gracefully;
-            } else {
-                syslog(LOG_ERR, "Unable to recv: %s", strerror(errno));
-                return -1;
-            }
-        }
+        
+        fseek(logfile, 0, SEEK_END);
+        
         syslog(LOG_INFO, "Closed connection from %s", peer_host);
         close(confd);
-    }
-    close(logfilefd);
 
-    if (confd < 0 && should_close) {
-        goto shutdown_gracefully;
-    } else {
-        syslog(LOG_ERR,"Accept failed: %s\n", strerror(errno));
-        return -1;
     }
-
-    return 0;
-shutdown_gracefully:
-    syslog(LOG_INFO, "Caught signal, exiting");
-    if (confd >= 0) close(confd);
-    if (socketfd >= 0) close(socketfd);
-    if (logfilefd >= 0) close(logfilefd);
+    fclose(logfile);
+    close(socketfd);
     unlink(OUTPUT);
+    syslog(LOG_INFO, "Caught signal, exiting");
+    closelog();
+
     return 0;
 }
