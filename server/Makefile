@@ -1,7 +1,7 @@
 CC = $(CROSS_COMPILE)gcc
 
 aesdsocket: aesdsocket.c
-	$(CC) $? -o $@
+	$(CC) $? -g -o $@
 
 clean: aesdsocket
 	rm $?
