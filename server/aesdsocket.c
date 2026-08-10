@@ -14,6 +14,8 @@
 
 #define OUTPUT "/var/tmp/aesdsocketdata"
 
+#define syslog(priority, format, ...) (printf(format "\n", ##__VA_ARGS__), syslog(priority, format, ##__VA_ARGS__))
+
 bool should_close = false;
 void handle_close_signal(int signal) {
     should_close = true;
