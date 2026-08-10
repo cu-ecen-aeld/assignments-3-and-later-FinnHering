@@ -70,7 +70,7 @@ int main(size_t argc, char** argv) {
 
     int confd;
     struct sockaddr peer_addr = {};
-    socklen_t peer_addrlen;
+    socklen_t peer_addrlen = 0;
     int logfilefd = open(OUTPUT, O_RDWR | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
     if (logfilefd < 0) {
         syslog(LOG_ERR, "Unable to open file /var/tmp/aesdsocketdata: %s", strerror(errno));
@@ -79,8 +79,8 @@ int main(size_t argc, char** argv) {
 
     syslog(LOG_DEBUG, "Waiting for incoming connections...");
     while (!should_close && (confd = accept(socketfd, &peer_addr, &peer_addrlen)) >= 0) {
-        char peer_host[NI_MAXHOST];
-        char peer_service[NI_MAXSERV];
+        char peer_host[NI_MAXHOST] = {0};
+        char peer_service[NI_MAXSERV] = {0};
         int err = getnameinfo(&peer_addr, peer_addrlen, peer_host, NI_MAXHOST, peer_service, NI_MAXSERV, NI_NUMERICHOST | NI_NUMERICSERV);
         
         syslog(LOG_INFO, "Accepted connection from %s\n", peer_host);
@@ -141,9 +141,15 @@ int main(size_t argc, char** argv) {
 
                     // Realocate the package content to hold the rest of the data...f
                     size_t new_len = recv_status - (i + 1);
-                    package_content = realloc(package_content, new_len);
+                    if (new_len > 0) {
+                        package_content = realloc(package_content, new_len);
+                    } else {
+                        free(package_content);
+                        package_content = NULL;
+                    }
                     package_len = new_len;
                     package_offset = 0;
+
                 }
             }
         }
@@ -173,9 +179,9 @@ int main(size_t argc, char** argv) {
     return 0;
 shutdown_gracefully:
     syslog(LOG_INFO, "Caught signal, exiting");
-    close(confd);
-    close(socketfd);
-    close(logfilefd);
+    if (confd >= 0) close(confd);
+    if (socketfd >= 0) close(socketfd);
+    if (logfilefd >= 0) close(logfilefd);
     unlink(OUTPUT);
     return 0;
 }
