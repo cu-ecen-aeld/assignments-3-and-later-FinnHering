@@ -25,4 +25,5 @@ jobs:
           - name: Run full test
             run: ./full-test.sh
           - name: Print syslog
+            if: ${{ failure() }}
             run: cat /var/log/syslog
