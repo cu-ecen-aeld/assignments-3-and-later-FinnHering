@@ -11,3 +11,4 @@ case "$1" in
         echo "aesd-start-stop {start|stop}"
         exit 1
         ;;
+esac
