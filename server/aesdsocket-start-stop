@@ -1,0 +1,10 @@
+#!/bin/bash
+
+case "$1" in
+    start)
+        start-stop-daemon -n aesdsocket -S /usr/bin/aesdsocket -d
+    stop)
+        start-stop-daemon -n aesdsocket -K
+    usage)
+        echo "aesd-start-stop {start|stop}"
+        exit 1
