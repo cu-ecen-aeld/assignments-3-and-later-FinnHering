@@ -2,7 +2,7 @@
 
 case "$1" in
     start)
-        start-stop-daemon -n aesdsocket -S -x /usr/bin/aesdsocket -d
+        start-stop-daemon -n aesdsocket -S -x /usr/bin/aesdsocket -- -d
     stop)
         start-stop-daemon -n aesdsocket -K
     usage)
